@@ -1,4 +1,4 @@
-import { defineComponent, h, createCommentVNode, ComponentPublicInstance, resolveComponent, reactive, ref, Ref, provide, inject, nextTick, onActivated, onDeactivated, onBeforeUnmount, onUnmounted, watch, computed, ComputedRef, onMounted } from 'vue'
+import { defineComponent, h, createCommentVNode, ComponentPublicInstance, reactive, ref, Ref, provide, inject, nextTick, onActivated, onDeactivated, onBeforeUnmount, onUnmounted, watch, computed, ComputedRef, onMounted } from 'vue'
 import XEUtils from 'xe-utils'
 import { browse, isPx, isScale, hasClass, addClass, removeClass, getEventTargetNode, getPaddingTopBottomSize, setScrollTop, setScrollLeft, isNodeElement } from '../../ui/src/dom'
 import { getLastZIndex, nextZIndex, hasChildrenList, getFuncText, isEnableConf, formatText, eqEmptyValue } from '../../ui/src/utils'
@@ -18,7 +18,8 @@ import TableImportPanelComponent from '../module/export/import-panel'
 import TableExportPanelComponent from '../module/export/export-panel'
 import TableMenuPanelComponent from '../module/menu/panel'
 
-import type { VxeGridConstructor, VxeGridPrivateMethods, VxeTableConstructor, TableReactData, TableInternalData, VxeTablePropTypes, VxeToolbarConstructor, TablePrivateMethods, VxeTablePrivateRef, VxeTablePrivateComputed, VxeTablePrivateMethods, TableMethods, VxeTableMethods, VxeTableDefines, VxeTableProps, VxeColumnPropTypes, VxeLoadingComponent, VxeTooltipInstance, VxeTooltipComponent } from '../../../types'
+import type { VxeLoadingComponent, VxeTooltipInstance, VxeTooltipComponent } from 'vxe-pc-ui'
+import type { VxeGridConstructor, VxeGridPrivateMethods, VxeTableConstructor, TableReactData, TableInternalData, VxeTablePropTypes, VxeToolbarConstructor, TablePrivateMethods, VxeTablePrivateRef, VxeTablePrivateComputed, VxeTablePrivateMethods, TableMethods, VxeTableMethods, VxeTableDefines, VxeTableProps, VxeColumnPropTypes } from '../../../types'
 
 const { getConfig, getI18n, renderer, formats, createEvent, globalResize, interceptor, hooks, globalEvents, GLOBAL_EVENT_KEYS, useFns } = VxeUI
 
@@ -34,6 +35,10 @@ export default defineComponent({
     const { slots, emit } = context
 
     const xID = XEUtils.uniqueId()
+
+    // 使用已安装的组件，如果未安装则不渲染
+    const VxeUILoadingComponent = VxeUI.getComponent<VxeLoadingComponent>('VxeLoading')
+    const VxeUITooltipComponent = VxeUI.getComponent<VxeTooltipComponent>('VxeTooltip')
 
     const { computeSize } = useFns.useSize(props)
 
@@ -1220,7 +1225,7 @@ export default defineComponent({
         if (sortBy) {
           cellValue = XEUtils.isFunction(sortBy) ? sortBy({ row, column }) : XEUtils.get(row, sortBy)
         } else {
-          cellValue = tablePrivateMethods.getCellLabel(row, column)
+          cellValue = tableMethods.getCellLabel(row, column)
         }
         if (!sortType || sortType === 'auto') {
           return isNaN(cellValue) ? cellValue : XEUtils.toNumber(cellValue)
@@ -2824,6 +2829,9 @@ export default defineComponent({
         }
         return nextTick()
       },
+      getParams () {
+        return props.params
+      },
       /**
        * 用于树结构，给行数据加载子节点
        */
@@ -3045,6 +3053,80 @@ export default defineComponent({
         }
         return nextTick()
       },
+      getCellElement (row, fieldOrColumn) {
+        const column = handleFieldOrColumn($xeTable, fieldOrColumn)
+        if (!column) {
+          return null
+        }
+        const rowid = getRowid($xeTable, row)
+        const tableBody = refTableBody.value
+        const leftBody = refTableLeftBody.value
+        const rightBody = refTableRightBody.value
+        let bodyElem
+        if (column) {
+          if (column.fixed) {
+            if (column.fixed === 'left') {
+              if (leftBody) {
+                bodyElem = leftBody.$el as HTMLDivElement
+              }
+            } else {
+              if (rightBody) {
+                bodyElem = rightBody.$el as HTMLDivElement
+              }
+            }
+          }
+          if (!bodyElem) {
+            bodyElem = tableBody.$el as HTMLDivElement
+          }
+          if (bodyElem) {
+            return bodyElem.querySelector(`.vxe-body--row[rowid="${rowid}"] .${column.id}`)
+          }
+        }
+        return null
+      },
+      getCellLabel (row, fieldOrColumn) {
+        const column = handleFieldOrColumn($xeTable, fieldOrColumn)
+        if (!column) {
+          return null
+        }
+        const formatter = column.formatter
+        const cellValue = getCellValue(row, column)
+        let cellLabel = cellValue
+        if (formatter) {
+          let formatData
+          const { fullAllDataRowIdData } = internalData
+          const rowid = getRowid($xeTable, row)
+          const colid = column.id
+          const rest = fullAllDataRowIdData[rowid]
+          if (rest) {
+            formatData = rest.formatData
+            if (!formatData) {
+              formatData = fullAllDataRowIdData[rowid].formatData = {}
+            }
+            if (rest && formatData[colid]) {
+              if (formatData[colid].value === cellValue) {
+                return formatData[colid].label
+              }
+            }
+          }
+          const formatParams = { cellValue, row, rowIndex: tableMethods.getRowIndex(row), column, columnIndex: tableMethods.getColumnIndex(column) }
+          if (XEUtils.isString(formatter)) {
+            const gFormatOpts = formats.get(formatter)
+            const tcFormatMethod = gFormatOpts ? (gFormatOpts.tableCellFormatMethod || gFormatOpts.cellFormatMethod) : null
+            cellLabel = tcFormatMethod ? tcFormatMethod(formatParams) : ''
+          } else if (XEUtils.isArray(formatter)) {
+            const gFormatOpts = formats.get(formatter[0])
+            const tcFormatMethod = gFormatOpts ? (gFormatOpts.tableCellFormatMethod || gFormatOpts.cellFormatMethod) : null
+            cellLabel = tcFormatMethod ? tcFormatMethod(formatParams, ...formatter.slice(1)) : ''
+          } else {
+            cellLabel = formatter(formatParams)
+          }
+          if (formatData) {
+            formatData[colid] = { value: cellValue, label: cellLabel }
+          }
+        }
+        return cellLabel
+      },
       /**
        * 检查是否为临时行数据
        * @param {Row} row 行对象
@@ -3099,6 +3181,13 @@ export default defineComponent({
       getColumns (columnIndex?: number): any {
         const columns = internalData.visibleColumn
         return XEUtils.isUndefined(columnIndex) ? columns.slice(0) : columns[columnIndex]
+      },
+      /**
+       * 根据列获取列的唯一主键
+       */
+      getColid (fieldOrColumn) {
+        const column = handleFieldOrColumn($xeTable, fieldOrColumn)
+        return column ? column.id : null
       },
       /**
        * 根据列的唯一主键获取列
@@ -4373,7 +4462,7 @@ export default defineComponent({
             const type = 'change'
             if ($xeTable.hasCellRules) {
               if ($xeTable.hasCellRules(type, row, column)) {
-                const cell = tablePrivateMethods.getCell(row, column)
+                const cell = tableMethods.getCellElement(row, column)
                 if (cell) {
                   return $xeTable.validCellRules(type, row, column, cellValue)
                     .then(() => {
@@ -4684,10 +4773,12 @@ export default defineComponent({
           }
           if (areaOpts.autoClear) {
             if ($xeTable.clearCellAreas) {
-              if (!getEventTargetNode(evnt, document.body, 'vxe-table--ignore-areas-clear').flag) {
+              const cellAreas = $xeTable.getCellAreas()
+              if (cellAreas.length && !getEventTargetNode(evnt, document.body, 'vxe-table--ignore-areas-clear').flag) {
                 tablePrivateMethods.preventEvent(evnt, 'event.clearAreas', {}, () => {
                   $xeTable.clearCellAreas()
                   $xeTable.clearCopyCellArea()
+                  $xeTable.dispatchEvent('clear-cell-area-selection', { cellAreas }, evnt)
                 })
               }
             }
@@ -4790,7 +4881,7 @@ export default defineComponent({
           const childrenField = treeOpts.children || treeOpts.childrenField
           const keyCode = evnt.keyCode
           const isEsc = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.ESCAPE)
-          const isBack = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.BACKSPACE)
+          const hasBackspaceKey = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.BACKSPACE)
           const isTab = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.TAB)
           const isEnter = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.ENTER)
           const isSpacebar = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.SPACEBAR)
@@ -4798,7 +4889,7 @@ export default defineComponent({
           const isUpArrow = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.ARROW_UP)
           const isRightArrow = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.ARROW_RIGHT)
           const isDwArrow = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.ARROW_DOWN)
-          const isDel = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.DELETE)
+          const hasDeleteKey = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.DELETE)
           const isF2 = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.F2)
           const isContextMenu = globalEvents.hasKey(evnt, GLOBAL_EVENT_KEYS.CONTEXT_MENU)
           const hasMetaKey = evnt.metaKey
@@ -4923,11 +5014,31 @@ export default defineComponent({
             } else if (actived.row || actived.column) {
               $xeTable.moveTabSelected(actived.args, hasShiftKey, evnt)
             }
-          } else if (keyboardConfig && isEnableConf(editConfig) && (isDel || (treeConfig && (rowOpts.isCurrent || highlightCurrentRow) && currentRow ? isBack && keyboardOpts.isArrow : isBack))) {
+          } else if (keyboardConfig && keyboardOpts.isDel && hasDeleteKey && isEnableConf(editConfig) && (selected.row || selected.column)) {
+            // 如果是删除键
+            if (!isEditStatus) {
+              const { delMethod } = keyboardOpts
+              const delPaqrams = {
+                row: selected.row,
+                rowIndex: tableMethods.getRowIndex(selected.row),
+                column: selected.column,
+                columnIndex: tableMethods.getColumnIndex(selected.column),
+                $table: $xeTable
+              }
+              if (delMethod) {
+                delMethod(delPaqrams)
+              } else {
+                setCellValue(selected.row, selected.column, null)
+              }
+              // 如果按下 del 键，更新表尾数据
+              tableMethods.updateFooter()
+              $xeTable.dispatchEvent('cell-delete-value', delPaqrams, evnt)
+            }
+          } else if (hasBackspaceKey && keyboardConfig && keyboardOpts.isBack && isEnableConf(editConfig) && (selected.row || selected.column)) {
             if (!isEditStatus) {
               const { delMethod, backMethod } = keyboardOpts
               // 如果是删除键
-              if (keyboardOpts.isDel && (selected.row || selected.column)) {
+              if (keyboardOpts.isDel && isEnableConf(editConfig) && (selected.row || selected.column)) {
                 const delPaqrams = {
                   row: selected.row,
                   rowIndex: tableMethods.getRowIndex(selected.row),
@@ -4940,39 +5051,34 @@ export default defineComponent({
                 } else {
                   setCellValue(selected.row, selected.column, null)
                 }
-                if (isBack) {
-                  if (backMethod) {
-                    backMethod({
-                      row: selected.row,
-                      rowIndex: tableMethods.getRowIndex(selected.row),
-                      column: selected.column,
-                      columnIndex: tableMethods.getColumnIndex(selected.column),
-                      $table: $xeTable
-                    })
-                  } else {
-                    $xeTable.handleActived(selected.args, evnt)
-                  }
-                } else if (isDel) {
-                  // 如果按下 del 键，更新表尾数据
-                  tableMethods.updateFooter()
+                if (backMethod) {
+                  backMethod({
+                    row: selected.row,
+                    rowIndex: tableMethods.getRowIndex(selected.row),
+                    column: selected.column,
+                    columnIndex: tableMethods.getColumnIndex(selected.column),
+                    $table: $xeTable
+                  })
+                } else {
+                  $xeTable.handleActived(selected.args, evnt)
                 }
-                $xeTable.dispatchEvent('cell-delete-value', delPaqrams, evnt)
-              } else if (isBack && keyboardOpts.isArrow && treeConfig && (rowOpts.isCurrent || highlightCurrentRow) && currentRow) {
-                // 如果树形表格回退键关闭当前行返回父节点
-                const { parent: parentRow } = XEUtils.findTree(internalData.afterFullData, item => item === currentRow, { children: childrenField })
-                if (parentRow) {
-                  evnt.preventDefault()
-                  params = {
-                    $table: $xeTable,
-                    row: parentRow,
-                    rowIndex: tableMethods.getRowIndex(parentRow),
-                    $rowIndex: tableMethods.getVMRowIndex(parentRow)
-                  }
-                  tableMethods.setTreeExpand(parentRow, false)
-                    .then(() => tableMethods.scrollToRow(parentRow))
-                    .then(() => tablePrivateMethods.triggerCurrentRowEvent(evnt, params))
-                }
+                $xeTable.dispatchEvent('cell-backspace-value', delPaqrams, evnt)
               }
+            }
+          } else if (hasBackspaceKey && keyboardConfig && treeConfig && keyboardOpts.isBack && (rowOpts.isCurrent || highlightCurrentRow) && currentRow) {
+            // 如果树形表格回退键关闭当前行返回父节点
+            const { parent: parentRow } = XEUtils.findTree(internalData.afterTreeFullData, item => item === currentRow, { children: childrenField })
+            if (parentRow) {
+              evnt.preventDefault()
+              params = {
+                $table: $xeTable,
+                row: parentRow,
+                rowIndex: tableMethods.getRowIndex(parentRow),
+                $rowIndex: tableMethods.getVMRowIndex(parentRow)
+              }
+              tableMethods.setTreeExpand(parentRow, false)
+                .then(() => tableMethods.scrollToRow(parentRow))
+                .then(() => tablePrivateMethods.triggerCurrentRowEvent(evnt, params))
             }
           } else if (keyboardConfig && isEnableConf(editConfig) && keyboardOpts.isEdit && !hasCtrlKey && !hasMetaKey && (isSpacebar || (keyCode >= 48 && keyCode <= 57) || (keyCode >= 65 && keyCode <= 90) || (keyCode >= 96 && keyCode <= 111) || (keyCode >= 186 && keyCode <= 192) || (keyCode >= 219 && keyCode <= 222))) {
             const { editMethod } = keyboardOpts
@@ -5916,6 +6022,7 @@ export default defineComponent({
         if (trigger === 'manual') {
           return
         }
+        evnt.stopPropagation()
         if (checkboxOpts.isShiftKey && evnt.shiftKey && !props.treeConfig) {
           const checkboxRecords = tableMethods.getCheckboxRecords()
           if (checkboxRecords.length) {
@@ -5950,6 +6057,9 @@ export default defineComponent({
         if (trigger === 'manual') {
           return
         }
+        if (evnt) {
+          evnt.stopPropagation()
+        }
         handleCheckAllEvent(evnt, value)
       },
       /**
@@ -5963,6 +6073,7 @@ export default defineComponent({
         if (trigger === 'manual') {
           return
         }
+        evnt.stopPropagation()
         let newValue = row
         let isChange = oldValue !== newValue
         if (isChange) {
@@ -5998,6 +6109,7 @@ export default defineComponent({
         if (trigger === 'manual') {
           return
         }
+        evnt.stopPropagation()
         const rowid = getRowid($xeTable, row)
         if (!lazy || !rowExpandLazyLoadedMaps[rowid]) {
           const expanded = !tableMethods.isRowExpandByRow(row)
@@ -6026,6 +6138,7 @@ export default defineComponent({
         if (trigger === 'manual') {
           return
         }
+        evnt.stopPropagation()
         const rowid = getRowid($xeTable, row)
         if (!lazy || !treeExpandLazyLoadedMaps[rowid]) {
           const expanded = !tableMethods.isTreeExpandByRow(row)
@@ -6240,69 +6353,12 @@ export default defineComponent({
         }
         internalData.hoverRow = null
       },
+      /**
+       * 已废弃，被 getCellElement 替换
+       * @deprecated
+       */
       getCell (row, column) {
-        const rowid = getRowid($xeTable, row)
-        const tableBody = refTableBody.value
-        const leftBody = refTableLeftBody.value
-        const rightBody = refTableRightBody.value
-        let bodyElem
-        if (column) {
-          if (column.fixed) {
-            if (column.fixed === 'left') {
-              if (leftBody) {
-                bodyElem = leftBody.$el as HTMLDivElement
-              }
-            } else {
-              if (rightBody) {
-                bodyElem = rightBody.$el as HTMLDivElement
-              }
-            }
-          }
-          if (!bodyElem) {
-            bodyElem = tableBody.$el as HTMLDivElement
-          }
-          if (bodyElem) {
-            return bodyElem.querySelector(`.vxe-body--row[rowid="${rowid}"] .${column.id}`)
-          }
-        }
-        return null
-      },
-      getCellLabel (row, column) {
-        const formatter = column.formatter
-        const cellValue = getCellValue(row, column)
-        let cellLabel = cellValue
-        if (formatter) {
-          let formatData
-          const { fullAllDataRowIdData } = internalData
-          const rowid = getRowid($xeTable, row)
-          const colid = column.id
-          const rest = fullAllDataRowIdData[rowid]
-          if (rest) {
-            formatData = rest.formatData
-            if (!formatData) {
-              formatData = fullAllDataRowIdData[rowid].formatData = {}
-            }
-            if (rest && formatData[colid]) {
-              if (formatData[colid].value === cellValue) {
-                return formatData[colid].label
-              }
-            }
-          }
-          const formatParams = { cellValue, row, rowIndex: tableMethods.getRowIndex(row), column, columnIndex: tableMethods.getColumnIndex(column) }
-          if (XEUtils.isString(formatter)) {
-            const gFormatOpts = formats.get(formatter)
-            cellLabel = gFormatOpts && gFormatOpts.cellFormatMethod ? gFormatOpts.cellFormatMethod(formatParams) : ''
-          } else if (XEUtils.isArray(formatter)) {
-            const gFormatOpts = formats.get(formatter[0])
-            cellLabel = gFormatOpts && gFormatOpts.cellFormatMethod ? gFormatOpts.cellFormatMethod(formatParams, ...formatter.slice(1)) : ''
-          } else {
-            cellLabel = formatter(formatParams)
-          }
-          if (formatData) {
-            formatData[colid] = { value: cellValue, label: cellLabel }
-          }
-        }
-        return cellLabel
+        return tableMethods.getCellElement(row, column)
       },
       findRowIndexOf (list, row) {
         return row ? XEUtils.findIndexOf(list, item => $xeTable.eqRow(item, row)) : -1
@@ -6385,7 +6441,7 @@ export default defineComponent({
         return slots.empty(params)
       } else {
         const compConf = emptyOpts.name ? renderer.get(emptyOpts.name) : null
-        const rtEmptyView = compConf ? compConf.renderTableEmptyView || compConf.renderEmpty : null
+        const rtEmptyView = compConf ? (compConf.renderTableEmpty || compConf.renderTableEmptyView || compConf.renderEmpty) : null
         if (rtEmptyView) {
           return getSlotVNs(rtEmptyView(emptyOpts, params))
         }
@@ -6911,16 +6967,18 @@ export default defineComponent({
         /**
          * 加载中
          */
-        h(resolveComponent('vxe-loading') as VxeLoadingComponent, {
-          class: 'vxe-table--loading',
-          modelValue: currLoading,
-          icon: loadingOpts.icon,
-          text: loadingOpts.text
-        }, loadingSlot
-          ? {
-              default: () => loadingSlot({ $table: $xeTable, $grid: $xeGrid })
-            }
-          : {}),
+        VxeUILoadingComponent
+          ? h(VxeUILoadingComponent, {
+            class: 'vxe-table--loading',
+            modelValue: currLoading,
+            icon: loadingOpts.icon,
+            text: loadingOpts.text
+          }, loadingSlot
+            ? {
+                default: () => loadingSlot({ $table: $xeTable, $grid: $xeGrid })
+              }
+            : {})
+          : createCommentVNode(),
         /**
          * 自定义列
          */
@@ -6968,23 +7026,27 @@ export default defineComponent({
         /**
          * 通用提示
          */
-        h(resolveComponent('vxe-tooltip') as VxeTooltipComponent, {
-          ref: refCommTooltip,
-          isArrow: false,
-          enterable: false
-        }),
+        VxeUITooltipComponent
+          ? h(VxeUITooltipComponent, {
+            ref: refCommTooltip,
+            isArrow: false,
+            enterable: false
+          })
+          : createCommentVNode(),
         /**
          * 工具提示
          */
-        h(resolveComponent('vxe-tooltip') as VxeTooltipComponent, {
-          ref: refTooltip,
-          ...tipConfig as any
-        }),
+        VxeUITooltipComponent
+          ? h(VxeUITooltipComponent, {
+            ref: refTooltip,
+            ...tipConfig as any
+          })
+          : createCommentVNode(),
         /**
          * 校验提示
          */
-        props.editRules && validOpts.showMessage && (validOpts.message === 'default' ? !height : validOpts.message === 'tooltip')
-          ? h(resolveComponent('vxe-tooltip') as VxeTooltipComponent, {
+        VxeUITooltipComponent && props.editRules && validOpts.showMessage && (validOpts.message === 'default' ? !height : validOpts.message === 'tooltip')
+          ? h(VxeUITooltipComponent, {
             ref: refValidTooltip,
             class: [{
               'old-cell-valid': editRules && getConfig().cellVaildMode === 'obsolete'
@@ -6996,6 +7058,24 @@ export default defineComponent({
     }
 
     $xeTable.renderVN = renderVN
+
+    if (process.env.VUE_APP_VXE_ENV === 'development') {
+      nextTick(() => {
+        if (props.loading) {
+          if (!VxeUILoadingComponent) {
+            errLog('vxe.error.reqComp', ['vxe-loading'])
+          }
+        }
+        if ((props.showOverflow === true || props.showOverflow === 'tooltip') ||
+          (props.showHeaderOverflow === true || props.showHeaderOverflow === 'tooltip') ||
+          (props.showFooterOverflow === true || props.showFooterOverflow === 'tooltip') ||
+          props.tooltipConfig || props.editRules) {
+          if (!VxeUITooltipComponent) {
+            errLog('vxe.error.reqComp', ['vxe-tooltip'])
+          }
+        }
+      })
+    }
 
     provide('$xeColgroup', null)
     provide('$xeTable', $xeTable)

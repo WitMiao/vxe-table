@@ -6,7 +6,8 @@ import { getFuncText, formatText, isEmptyValue } from '../../ui/src/utils'
 import { getOnName } from '../../ui/src/vn'
 import { errLog } from '../../ui/src/log'
 
-import type { VxeGlobalRendererHandles, VxeColumnPropTypes, VxeButtonComponent } from '../../../types'
+import type { VxeButtonComponent } from 'vxe-pc-ui'
+import type { VxeGlobalRendererHandles, VxeColumnPropTypes } from '../../../types'
 
 const { getConfig, renderer, getI18n } = VxeUI
 
@@ -550,11 +551,57 @@ renderer.mixin({
           case 'date':
           case 'week':
           case 'month':
+          case 'quarter':
           case 'year':
             cellValue = getLabelFormatDate(cellValue, props)
             break
           case 'float':
             cellValue = XEUtils.toFixed(XEUtils.floor(cellValue, digits), digits)
+            break
+        }
+      }
+      return getCellLabelVNs(renderOpts, params, cellValue)
+    },
+    renderDefault: defaultEditRender,
+    renderFilter: defaultFilterRender,
+    defaultFilterMethod: handleFilterMethod
+  },
+  VxeNumberInput: {
+    autofocus: '.vxe-number-input--inner',
+    renderEdit: defaultEditRender,
+    renderCell (renderOpts: any, params: any) {
+      const { props = {} } = renderOpts
+      const { row, column } = params
+      const digits = props.digits || getConfig().numberInput?.digits || 2
+      let cellValue = XEUtils.get(row, column.property)
+      if (cellValue) {
+        switch (props.type) {
+          case 'float':
+            cellValue = XEUtils.toFixed(XEUtils.floor(cellValue, digits), digits)
+            break
+        }
+      }
+      return getCellLabelVNs(renderOpts, params, cellValue)
+    },
+    renderDefault: defaultEditRender,
+    renderFilter: defaultFilterRender,
+    defaultFilterMethod: handleFilterMethod
+  },
+  VxeDatePicker: {
+    autofocus: '.vxe-date-picker--inner',
+    renderEdit: defaultEditRender,
+    renderCell (renderOpts: any, params: any) {
+      const { props = {} } = renderOpts
+      const { row, column } = params
+      let cellValue = XEUtils.get(row, column.property)
+      if (cellValue) {
+        switch (props.type) {
+          case 'date':
+          case 'week':
+          case 'month':
+          case 'quarter':
+          case 'year':
+            cellValue = getLabelFormatDate(cellValue, props)
             break
         }
       }
@@ -571,7 +618,16 @@ renderer.mixin({
     renderDefault: defaultCellRender
   },
   VxeButtonGroup: {
-    renderDefault: defaultCellRender
+    renderDefault (renderOpts, params) {
+      const { options } = renderOpts
+      return [
+        h(getDefaultComponent(renderOpts), {
+          options,
+          ...getCellEditProps(renderOpts, params, null),
+          ...getComponentOns(renderOpts, params)
+        })
+      ]
+    }
   },
   VxeSelect: {
     autofocus: '.vxe-input--inner',
@@ -595,21 +651,12 @@ renderer.mixin({
     defaultFilterMethod: handleFilterMethod,
     exportMethod: handleExportSelectMethod
   },
-  VxeRadio: {
-    autofocus: '.vxe-radio--input'
-  },
-  VxeRadioGroup: {
-    autofocus: '.vxe-radio--input'
-  },
-  VxeCheckbox: {
-    autofocus: '.vxe-checkbox--input'
-  },
-  VxeCheckboxGroup: {
-    autofocus: '.vxe-checkbox--input'
-  },
   VxeSwitch: {
     autofocus: '.vxe-switch--button',
     renderEdit: defaultEditRender,
+    renderDefault: defaultEditRender
+  },
+  VxeUpload: {
     renderDefault: defaultEditRender
   },
 

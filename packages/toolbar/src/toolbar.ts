@@ -1,10 +1,11 @@
-import { defineComponent, h, ref, Ref, computed, inject, createCommentVNode, VNode, reactive, nextTick, PropType, resolveComponent } from 'vue'
+import { defineComponent, h, ref, Ref, computed, inject, createCommentVNode, VNode, reactive, nextTick, PropType } from 'vue'
 import XEUtils from 'xe-utils'
 import { VxeUI } from '../../ui'
 import { getSlotVNs } from '../../ui/src/vn'
 import { warnLog, errLog } from '../../ui/src/log'
 
-import type { VxeGridConstructor, GridPrivateMethods, ToolbarMethods, VxeToolbarConstructor, VxeToolbarEmits, VxeToolbarPropTypes, VxeTableConstructor, ToolbarPrivateRef, VxeTableMethods, VxeTablePrivateMethods, ToolbarReactData, VxeButtonComponent } from '../../../types'
+import type { VxeButtonComponent } from 'vxe-pc-ui'
+import type { VxeGridConstructor, GridPrivateMethods, ToolbarMethods, VxeToolbarConstructor, VxeToolbarEmits, VxeToolbarPropTypes, VxeTableConstructor, ToolbarPrivateRef, VxeTableMethods, VxeTablePrivateMethods, ToolbarReactData } from '../../../types'
 
 const { getConfig, getIcon, getI18n, renderer, commands, createEvent, useFns } = VxeUI
 
@@ -32,6 +33,9 @@ export default defineComponent({
     const { slots, emit } = context
 
     const xID = XEUtils.uniqueId()
+
+    // 使用已安装的组件，如果未安装则不渲染
+    const VxeUIButtonComponent = VxeUI.getComponent<VxeButtonComponent>('VxeButton')
 
     const { computeSize } = useFns.useSize(props)
 
@@ -181,8 +185,9 @@ export default defineComponent({
           const gCommandOpts = commands.get(code)
           const params = { code, button: item, $table: $table!, $grid: $xeGrid, $event: evnt }
           if (gCommandOpts) {
-            if (gCommandOpts.commandMethod) {
-              gCommandOpts.commandMethod(params)
+            const tCommandMethod = gCommandOpts.tableCommandMethod || gCommandOpts.commandMethod
+            if (tCommandMethod) {
+              tCommandMethod(params)
             } else {
               if (process.env.VUE_APP_VXE_ENV === 'development') {
                 errLog('vxe.error.notCommands', [code])
@@ -204,8 +209,9 @@ export default defineComponent({
           const gCommandOpts = commands.get(code)
           const params = { code, tool: item, $table: $table!, $grid: $xeGrid, $event: evnt }
           if (gCommandOpts) {
-            if (gCommandOpts.commandMethod) {
-              gCommandOpts.commandMethod(params)
+            const tCommandMethod = gCommandOpts.tableCommandMethod || gCommandOpts.commandMethod
+            if (tCommandMethod) {
+              tCommandMethod(params)
             } else {
               if (process.env.VUE_APP_VXE_ENV === 'development') {
                 errLog('vxe.error.notCommands', [code])
@@ -252,18 +258,20 @@ export default defineComponent({
           if (child.visible === false) {
             return createCommentVNode()
           }
-          return h(resolveComponent('vxe-button') as VxeButtonComponent, {
-            key: index,
-            disabled: child.disabled,
-            loading: child.loading,
-            type: child.type,
-            icon: child.icon,
-            circle: child.circle,
-            round: child.round,
-            status: child.status,
-            content: child.name,
-            onClick: (evnt: Event) => isBtn ? btnEvent(evnt, child) : tolEvent(evnt, child)
-          })
+          return VxeUIButtonComponent
+            ? h(VxeUIButtonComponent, {
+              key: index,
+              disabled: child.disabled,
+              loading: child.loading,
+              type: child.type,
+              icon: child.icon,
+              circle: child.circle,
+              round: child.round,
+              status: child.status,
+              content: child.name,
+              onClick: (evnt: Event) => isBtn ? btnEvent(evnt, child) : tolEvent(evnt, child)
+            })
+            : createCommentVNode()
         })
       }
       return downVNs
@@ -294,26 +302,28 @@ export default defineComponent({
                 }, getSlotVNs(compConf.renderToolbarButton(buttonRender, params)))
               )
             } else {
-              btnVNs.push(
-                h(resolveComponent('vxe-button') as VxeButtonComponent, {
-                  disabled: item.disabled,
-                  loading: item.loading,
-                  type: item.type,
-                  icon: item.icon,
-                  circle: item.circle,
-                  round: item.round,
-                  status: item.status,
-                  content: item.name,
-                  destroyOnClose: item.destroyOnClose,
-                  placement: item.placement,
-                  transfer: item.transfer,
-                  onClick: (evnt: Event) => btnEvent(evnt, item)
-                }, dropdowns && dropdowns.length
-                  ? {
-                      dropdowns: () => renderDropdowns(item, true)
-                    }
-                  : {})
-              )
+              if (VxeUIButtonComponent) {
+                btnVNs.push(
+                  h(VxeUIButtonComponent, {
+                    disabled: item.disabled,
+                    loading: item.loading,
+                    type: item.type,
+                    icon: item.icon,
+                    circle: item.circle,
+                    round: item.round,
+                    status: item.status,
+                    content: item.name,
+                    destroyOnClose: item.destroyOnClose,
+                    placement: item.placement,
+                    transfer: item.transfer,
+                    onClick: (evnt: Event) => btnEvent(evnt, item)
+                  }, dropdowns && dropdowns.length
+                    ? {
+                        dropdowns: () => renderDropdowns(item, true)
+                      }
+                    : {})
+                )
+              }
             }
           }
         })
@@ -348,27 +358,29 @@ export default defineComponent({
                 }, getSlotVNs(compConf.renderToolbarTool(toolRender, params)))
               )
             } else {
-              btnVNs.push(
-                h(resolveComponent('vxe-button') as VxeButtonComponent, {
-                  key: tIndex,
-                  disabled: item.disabled,
-                  loading: item.loading,
-                  type: item.type,
-                  icon: item.icon,
-                  circle: item.circle,
-                  round: item.round,
-                  status: item.status,
-                  content: item.name,
-                  destroyOnClose: item.destroyOnClose,
-                  placement: item.placement,
-                  transfer: item.transfer,
-                  onClick: (evnt: Event) => tolEvent(evnt, item)
-                }, dropdowns && dropdowns.length
-                  ? {
-                      dropdowns: () => renderDropdowns(item, false)
-                    }
-                  : {})
-              )
+              if (VxeUIButtonComponent) {
+                btnVNs.push(
+                  h(VxeUIButtonComponent, {
+                    key: tIndex,
+                    disabled: item.disabled,
+                    loading: item.loading,
+                    type: item.type,
+                    icon: item.icon,
+                    circle: item.circle,
+                    round: item.round,
+                    status: item.status,
+                    content: item.name,
+                    destroyOnClose: item.destroyOnClose,
+                    placement: item.placement,
+                    transfer: item.transfer,
+                    onClick: (evnt: Event) => tolEvent(evnt, item)
+                  }, dropdowns && dropdowns.length
+                    ? {
+                        dropdowns: () => renderDropdowns(item, false)
+                      }
+                    : {})
+                )
+              }
             }
           }
         })
@@ -378,52 +390,60 @@ export default defineComponent({
 
     const renderToolImport = () => {
       const importOpts = computeImportOpts.value
-      return h(resolveComponent('vxe-button') as VxeButtonComponent, {
-        key: 'import',
-        circle: true,
-        icon: importOpts.icon || getIcon().TOOLBAR_TOOLS_IMPORT,
-        title: getI18n('vxe.toolbar.import'),
-        onClick: importEvent
-      })
+      return VxeUIButtonComponent
+        ? h(VxeUIButtonComponent, {
+          key: 'import',
+          circle: true,
+          icon: importOpts.icon || getIcon().TOOLBAR_TOOLS_IMPORT,
+          title: getI18n('vxe.toolbar.import'),
+          onClick: importEvent
+        })
+        : createCommentVNode()
     }
 
     const renderToolExport = () => {
       const exportOpts = computeExportOpts.value
-      return h(resolveComponent('vxe-button') as VxeButtonComponent, {
-        key: 'export',
-        circle: true,
-        icon: exportOpts.icon || getIcon().TOOLBAR_TOOLS_EXPORT,
-        title: getI18n('vxe.toolbar.export'),
-        onClick: exportEvent
-      })
+      return VxeUIButtonComponent
+        ? h(VxeUIButtonComponent, {
+          key: 'export',
+          circle: true,
+          icon: exportOpts.icon || getIcon().TOOLBAR_TOOLS_EXPORT,
+          title: getI18n('vxe.toolbar.export'),
+          onClick: exportEvent
+        })
+        : createCommentVNode()
     }
 
     const renderToolPrint = () => {
       const printOpts = computePrintOpts.value
-      return h(resolveComponent('vxe-button') as VxeButtonComponent, {
-        key: 'print',
-        circle: true,
-        icon: printOpts.icon || getIcon().TOOLBAR_TOOLS_PRINT,
-        title: getI18n('vxe.toolbar.print'),
-        onClick: printEvent
-      })
+      return VxeUIButtonComponent
+        ? h(VxeUIButtonComponent, {
+          key: 'print',
+          circle: true,
+          icon: printOpts.icon || getIcon().TOOLBAR_TOOLS_PRINT,
+          title: getI18n('vxe.toolbar.print'),
+          onClick: printEvent
+        })
+        : createCommentVNode()
     }
 
     const renderToolRefresh = () => {
       const refreshOpts = computeRefreshOpts.value
-      return h(resolveComponent('vxe-button') as VxeButtonComponent, {
-        key: 'refresh',
-        circle: true,
-        icon: reactData.isRefresh ? (refreshOpts.iconLoading || getIcon().TOOLBAR_TOOLS_REFRESH_LOADING) : (refreshOpts.icon || getIcon().TOOLBAR_TOOLS_REFRESH),
-        title: getI18n('vxe.toolbar.refresh'),
-        onClick: refreshEvent
-      })
+      return VxeUIButtonComponent
+        ? h(VxeUIButtonComponent, {
+          key: 'refresh',
+          circle: true,
+          icon: reactData.isRefresh ? (refreshOpts.iconLoading || getIcon().TOOLBAR_TOOLS_REFRESH_LOADING) : (refreshOpts.icon || getIcon().TOOLBAR_TOOLS_REFRESH),
+          title: getI18n('vxe.toolbar.refresh'),
+          onClick: refreshEvent
+        })
+        : createCommentVNode()
     }
 
     const renderToolZoom = () => {
       const zoomOpts = computeZoomOpts.value
-      return $xeGrid
-        ? h(resolveComponent('vxe-button') as VxeButtonComponent, {
+      return $xeGrid && VxeUIButtonComponent
+        ? h(VxeUIButtonComponent, {
           key: 'zoom',
           circle: true,
           icon: $xeGrid.isMaximized() ? (zoomOpts.iconOut || getIcon().TOOLBAR_TOOLS_MINIMIZE) : (zoomOpts.iconIn || getIcon().TOOLBAR_TOOLS_FULLSCREEN),
@@ -451,14 +471,16 @@ export default defineComponent({
         // 点击触发
         customBtnOns.onClick = handleClickSettingEvent
       }
-      return h(resolveComponent('vxe-button') as VxeButtonComponent, {
-        key: 'custom',
-        circle: true,
-        icon: customOpts.icon || getIcon().TOOLBAR_TOOLS_CUSTOM,
-        title: getI18n('vxe.toolbar.custom'),
-        className: 'vxe-toolbar-custom-target',
-        ...customBtnOns
-      })
+      return VxeUIButtonComponent
+        ? h(VxeUIButtonComponent, {
+          key: 'custom',
+          circle: true,
+          icon: customOpts.icon || getIcon().TOOLBAR_TOOLS_CUSTOM,
+          title: getI18n('vxe.toolbar.custom'),
+          className: 'vxe-toolbar-custom-target',
+          ...customBtnOns
+        })
+        : createCommentVNode()
     }
 
     toolbarMethods = {
@@ -530,6 +552,16 @@ export default defineComponent({
     }
 
     $xeToolbar.renderVN = renderVN
+
+    if (process.env.VUE_APP_VXE_ENV === 'development') {
+      nextTick(() => {
+        if (props.refresh || props.import || props.export || props.print || props.zoom) {
+          if (!VxeUIButtonComponent) {
+            errLog('vxe.error.reqComp', ['vxe-button'])
+          }
+        }
+      })
+    }
 
     return $xeToolbar
   },

@@ -7,6 +7,8 @@ import { VxeGrid } from './grid'
 import { VxeTable } from './table'
 import { VxeToolbar } from './toolbar'
 
+import zhCN from './locale/lang/zh-CN'
+
 import type { VxeGlobalConfig } from '../types'
 
 const components = [
@@ -23,8 +25,11 @@ export function install (app: App, options?: VxeGlobalConfig) {
   components.forEach(component => component.install(app))
 }
 
-export const modal = VxeUI.drawer
-export const drawer = VxeUI.drawer
+// 保留兼容老版本
+const defaultLanguage = 'zh-CN'
+VxeUI.setI18n(defaultLanguage, zhCN)
+VxeUI.setLanguage(defaultLanguage)
+VxeUI.setTheme('light')
 
 export * from './ui'
 
